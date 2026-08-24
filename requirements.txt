@@ -4,3 +4,4 @@ python-dotenv
 pydantic
 langchain-mistralai
 streamlit
+langgraph-checkpoint-sqlite

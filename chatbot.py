@@ -4,7 +4,8 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import BaseMessage
 from typing import TypedDict, Annotated
 from dotenv import load_dotenv
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
+import sqlite3
 
 load_dotenv()
 
@@ -18,7 +19,9 @@ def chat_node(state: ChatState):
     response = model.invoke(messages)
     return {'messages': [response]}
 
-checkpoint = InMemorySaver()
+conn = sqlite3.connect(database='chatbot.db', check_same_thread=False)
+
+checkpoint = SqliteSaver(conn)
 
 graph = StateGraph(ChatState)
 
@@ -28,6 +31,24 @@ graph.add_edge(START, 'chat_node')
 graph.add_edge('chat_node', END)
 
 workflow = graph.compile(checkpointer=checkpoint)
+
+def get_all_threads():
+    all_threads = set()
+    for ckpt in checkpoint.list(None):
+        all_threads.add(ckpt.config['configurable']['thread_id'])
+    return list(all_threads)
+
+def get_thread_history(thread_id):
+    data = checkpoint.get({'configurable': {'thread_id': thread_id}})
+    if not data:
+        return []
+    history = []
+    for msg in data.get('channel_values', {}).get('messages', []):
+        if msg.type == 'human':
+            history.append(('user', msg.content))
+        elif msg.type == 'ai':
+            history.append(('assistant', msg.content))
+    return history
 
 # thread_id = 1
 # config = {'configurable': {'thread_id': thread_id}}

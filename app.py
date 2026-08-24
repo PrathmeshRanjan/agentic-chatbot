@@ -1,6 +1,6 @@
 import streamlit as st
 from langchain_core.messages import HumanMessage
-from chatbot import workflow
+from chatbot import workflow, get_all_threads, get_thread_history
 import uuid
 
 # Generate unique thread ID
@@ -16,17 +16,23 @@ st.set_page_config(page_title="Agentic Chatbot", page_icon="🤖")
 st.title("🤖 Agentic Chatbot")
 
 if 'chat_threads' not in st.session_state:
-    st.session_state['chat_threads'] = []
+    st.session_state['chat_threads'] = get_all_threads()
 
 # Per-thread message history: thread_id -> list of (role, content)
 if 'chat_histories' not in st.session_state:
-    st.session_state['chat_histories'] = {}
+    # Restore display history for all persisted threads from the checkpointer
+    st.session_state['chat_histories'] = {
+        tid: get_thread_history(tid) for tid in st.session_state['chat_threads']
+    }
 
 if 'thread_id' not in st.session_state:
-    initial_id = generate_thread_id()
-    st.session_state['thread_id'] = initial_id
-    add_thread(initial_id)
-    st.session_state['chat_histories'][initial_id] = []
+    if st.session_state['chat_threads']:
+        st.session_state['thread_id'] = st.session_state['chat_threads'][-1]
+    else:
+        initial_id = generate_thread_id()
+        st.session_state['thread_id'] = initial_id
+        add_thread(initial_id)
+        st.session_state['chat_histories'][initial_id] = []
 
 # Sidebar
 st.sidebar.title("My Conversations")
