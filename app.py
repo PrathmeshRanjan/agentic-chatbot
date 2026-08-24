@@ -1,48 +1,60 @@
 import streamlit as st
-from langgraph.graph import START, END, StateGraph
-from langgraph.graph.message import add_messages
-from langchain.chat_models import init_chat_model
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from typing import TypedDict, Annotated
-from dotenv import load_dotenv
-from langgraph.checkpoint.memory import InMemorySaver
+from langchain_core.messages import HumanMessage
+from chatbot import workflow
+import uuid
 
-load_dotenv()
+# Generate unique thread ID
+def generate_thread_id():
+    return str(uuid.uuid4())
+
+# Add a new thread ID to the conversation list
+def add_thread(thread_id):
+    if thread_id not in st.session_state['chat_threads']:
+        st.session_state['chat_threads'].append(thread_id)
 
 st.set_page_config(page_title="Agentic Chatbot", page_icon="🤖")
 st.title("🤖 Agentic Chatbot")
 
+if 'chat_threads' not in st.session_state:
+    st.session_state['chat_threads'] = []
 
-class ChatState(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
+# Per-thread message history: thread_id -> list of (role, content)
+if 'chat_histories' not in st.session_state:
+    st.session_state['chat_histories'] = {}
 
+if 'thread_id' not in st.session_state:
+    initial_id = generate_thread_id()
+    st.session_state['thread_id'] = initial_id
+    add_thread(initial_id)
+    st.session_state['chat_histories'][initial_id] = []
 
-@st.cache_resource
-def build_workflow():
-    model = init_chat_model("mistralai:mistral-small-latest")
+# Sidebar
+st.sidebar.title("My Conversations")
 
-    def chat_node(state: ChatState):
-        response = model.invoke(state["messages"])
-        return {"messages": [response]}
+if st.sidebar.button("＋ New Chat", use_container_width=True):
+    new_id = generate_thread_id()
+    st.session_state['thread_id'] = new_id
+    add_thread(new_id)
+    st.session_state['chat_histories'][new_id] = []
+    st.rerun()
 
-    checkpoint = InMemorySaver()
-    graph = StateGraph(ChatState)
-    graph.add_node("chat_node", chat_node)
-    graph.add_edge(START, "chat_node")
-    graph.add_edge("chat_node", END)
-    return graph.compile(checkpointer=checkpoint)
+st.sidebar.divider()
 
+for tid in reversed(st.session_state['chat_threads']):
+    history = st.session_state['chat_histories'].get(tid, [])
+    # Use first user message as the conversation label
+    label = next((c for r, c in history if r == "user"), "New Chat")
+    if len(label) > 30:
+        label = label[:30] + "..."
+    is_active = tid == st.session_state['thread_id']
+    if st.sidebar.button(label, key=tid, use_container_width=True,
+                         type="primary" if is_active else "secondary"):
+        st.session_state['thread_id'] = tid
+        st.rerun()
 
-workflow = build_workflow()
-
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []  # list of (role, content) tuples
-
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = "streamlit-session-1"
-
-# Render existing messages
-for role, content in st.session_state.chat_history:
+# Render current thread's messages
+current_history = st.session_state['chat_histories'].get(st.session_state['thread_id'], [])
+for role, content in current_history:
     with st.chat_message(role):
         st.markdown(content)
 
@@ -50,11 +62,12 @@ for role, content in st.session_state.chat_history:
 user_input = st.chat_input("Type your message...")
 
 if user_input:
-    st.session_state.chat_history.append(("user", user_input))
+    thread_id = st.session_state['thread_id']
+    st.session_state['chat_histories'][thread_id].append(("user", user_input))
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    config = {"configurable": {"thread_id": st.session_state.thread_id}}
+    config = {"configurable": {"thread_id": thread_id}}
     initial_state = {"messages": [HumanMessage(content=user_input)]}
 
     with st.chat_message("assistant"):
@@ -70,4 +83,4 @@ if user_input:
 
         response_placeholder.markdown(full_response)
 
-    st.session_state.chat_history.append(("assistant", full_response))
+    st.session_state['chat_histories'][thread_id].append(("assistant", full_response))
