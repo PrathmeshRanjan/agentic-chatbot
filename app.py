@@ -73,7 +73,14 @@ if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {
+        "configurable": {"thread_id": thread_id},
+        "metadata": {
+            "thread_id": thread_id
+        },
+        "run_name": 'chat_trace'
+    }
+    
     initial_state = {"messages": [HumanMessage(content=user_input)]}
 
     with st.chat_message("assistant"):
