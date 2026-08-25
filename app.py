@@ -1,7 +1,9 @@
 import streamlit as st
 from langchain_core.messages import HumanMessage, AIMessageChunk, ToolMessage
-from chatbot import workflow, get_all_threads, get_thread_history
+from chatbot import workflow, get_all_threads, get_thread_history, ingest_rag_document
 import uuid
+import tempfile
+import os
 
 # Generate unique thread ID
 def generate_thread_id():
@@ -58,6 +60,25 @@ for tid in reversed(st.session_state['chat_threads']):
         st.session_state['thread_id'] = tid
         st.rerun()
 
+st.sidebar.divider()
+st.sidebar.subheader("📄 Documents")
+
+uploaded_pdf = st.sidebar.file_uploader("Upload a PDF", type=["pdf"], label_visibility="collapsed")
+if uploaded_pdf is not None:
+    if st.session_state.get("ingested_pdf") != uploaded_pdf.name:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(uploaded_pdf.read())
+            tmp_path = tmp.name
+        try:
+            with st.sidebar.spinner("Ingesting PDF..."):
+                ingest_rag_document(tmp_path)
+            st.session_state["ingested_pdf"] = uploaded_pdf.name
+        except Exception as e:
+            st.sidebar.error(f"Ingestion failed: {e}")
+        finally:
+            os.unlink(tmp_path)
+    st.sidebar.success(f"Active: **{uploaded_pdf.name}**")
+
 # Render current thread's messages
 current_history = st.session_state['chat_histories'].get(st.session_state['thread_id'], [])
 for role, content in current_history:
@@ -74,13 +95,12 @@ if user_input:
         st.markdown(user_input)
 
     config = {
-        "configurable": {"thread_id": thread_id},
-        "metadata": {
-            "thread_id": thread_id
-        },
-        "run_name": 'chat_trace'
+        "configurable": {
+            "thread_id": thread_id,
+            "pdf_name": st.session_state.get("ingested_pdf")
+        }
     }
-    
+
     initial_state = {"messages": [HumanMessage(content=user_input)]}
 
     with st.chat_message("assistant"):
