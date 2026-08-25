@@ -5,3 +5,4 @@ pydantic
 langchain-mistralai
 streamlit
 langgraph-checkpoint-sqlite
+langchain-tavily

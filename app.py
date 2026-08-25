@@ -1,5 +1,5 @@
 import streamlit as st
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessageChunk, ToolMessage
 from chatbot import workflow, get_all_threads, get_thread_history
 import uuid
 
@@ -84,16 +84,35 @@ if user_input:
     initial_state = {"messages": [HumanMessage(content=user_input)]}
 
     with st.chat_message("assistant"):
-        response_placeholder = st.empty()
+        response_placeholder = None
         full_response = ""
+        active_tool_calls = {}  # tool_call_id -> st.status widget
 
         for message_chunk, _ in workflow.stream(
             initial_state, config=config, stream_mode="messages"
         ):
-            if message_chunk.content:
-                full_response += message_chunk.content
-                response_placeholder.markdown(full_response + "▌")
+            if isinstance(message_chunk, ToolMessage):
+                tc_id = message_chunk.tool_call_id
+                if tc_id in active_tool_calls:
+                    result = message_chunk.content
+                    with active_tool_calls[tc_id]:
+                        st.caption(result[:500] + ("..." if len(result) > 500 else ""))
+                    active_tool_calls[tc_id].update(state="complete", expanded=False)
 
-        response_placeholder.markdown(full_response)
+            elif isinstance(message_chunk, AIMessageChunk):
+                for tc in message_chunk.tool_call_chunks:
+                    tc_id = tc.get("id")
+                    if tc_id and tc_id not in active_tool_calls:
+                        name = tc.get("name", "tool")
+                        active_tool_calls[tc_id] = st.status(f"Using tool: **{name}**", expanded=True)
+                if message_chunk.content:
+                    if response_placeholder is None:
+                        response_placeholder = st.empty()
+                    full_response += message_chunk.content
+                    response_placeholder.markdown(full_response + "▌")
 
-    st.session_state['chat_histories'][thread_id].append(("assistant", full_response))
+        if response_placeholder is not None:
+            response_placeholder.markdown(full_response)
+
+    if full_response:
+        st.session_state['chat_histories'][thread_id].append(("assistant", full_response))
