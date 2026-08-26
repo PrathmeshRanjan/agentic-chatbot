@@ -36,6 +36,8 @@ def ingest_rag_document(file_path):
 
 def get_retriever():
     DB_PATH = "faiss_db"
+    # allow_dangerous_deserialization=True is required because FAISS index metadata
+    # relies on Python pickle serialization. Safe here as the index is locally created.
     vector_store = FAISS.load_local(
             folder_path=DB_PATH,
             embeddings=embeddings, 
@@ -105,6 +107,8 @@ def calculator(expression: str) -> str:
             "sum": sum
         }
 
+        # Sandboxing eval: stripping __builtins__ prevents arbitrary Python code execution
+        # (e.g. __import__('os').system(...)) while exposing only safe mathematical utilities.
         result = eval(expression, {"__builtins__": {}}, allowed)
         return str(result)
 
@@ -271,14 +275,19 @@ def get_current_weather(location: str) -> str:
 
 tools = [search_tool, calculator, get_stock_price, get_current_weather, rag_tool, purchase_stock]
 
+# Converts Python functions and docstrings into JSON function schemas for native LLM tool calling
 model_with_tools = model.bind_tools(tools)
 
 class ChatState(TypedDict):
+    # 'add_messages' is a reducer: instead of overwriting the messages list on state updates,
+    # it appends new messages or updates existing messages by ID (enables conversational history).
     messages: Annotated[list[BaseMessage], add_messages]
 
 def chat_node(state: ChatState, config: RunnableConfig):
     """LLM node that can answer directly or call an appropriate tool."""
 
+    # RunnableConfig allows injecting per-invocation context (e.g. active document)
+    # without polluting or altering the graph state schema.
     pdf_name = config.get("configurable", {}).get("pdf_name")
     pdf_context = (
         f"A PDF document named '{pdf_name}' has been uploaded and indexed. "
@@ -320,8 +329,10 @@ def chat_node(state: ChatState, config: RunnableConfig):
 
 tool_node = ToolNode(tools) # Executes tool calls
 
+# check_same_thread=False allows Streamlit's multi-threaded worker runtime to share the DB connection
 conn = sqlite3.connect(database='chatbot.db', check_same_thread=False)
 
+# SqliteSaver persists state snapshots per thread_id to support conversational memory & HITL pause/resume
 checkpoint = SqliteSaver(conn)
 
 graph = StateGraph(ChatState)
@@ -330,8 +341,14 @@ graph.add_node('chat_node', chat_node)
 graph.add_node('tools', tool_node)
 
 graph.add_edge(START, 'chat_node')
-# If the LLM asked for a tool, go to ToolNode; else no
+
+# Conditional Routing:
+# tools_condition inspects state['messages'][-1].
+# If tool_calls exist -> returns 'tools'
+# If no tool_calls -> returns '__end__' (LangGraph's internal END node), completing the turn.
 graph.add_conditional_edges('chat_node', tools_condition) 
+
+# ReAct Cycle: After a tool executes, return to chat_node so the LLM can interpret results
 graph.add_edge('tools', 'chat_node')
 
 workflow = graph.compile(checkpointer=checkpoint)
