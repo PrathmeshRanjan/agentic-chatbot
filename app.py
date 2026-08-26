@@ -1,5 +1,6 @@
 import streamlit as st
 from langchain_core.messages import HumanMessage, AIMessageChunk, ToolMessage
+from langgraph.types import Command
 from chatbot import workflow, get_all_threads, get_thread_history, ingest_rag_document
 import uuid
 import tempfile
@@ -13,6 +14,47 @@ def generate_thread_id():
 def add_thread(thread_id):
     if thread_id not in st.session_state['chat_threads']:
         st.session_state['chat_threads'].append(thread_id)
+
+def stream_graph_response(stream_input, config, thread_id):
+    """Execute the graph streaming and render chunks, tool status, and assistant responses in the UI."""
+    with st.chat_message("assistant"):
+        response_placeholder = None
+        full_response = ""
+        active_tool_calls = {}  # tool_call_id -> st.status widget
+
+        for message_chunk, _ in workflow.stream(
+            stream_input, config=config, stream_mode="messages"
+        ):
+            if isinstance(message_chunk, ToolMessage):
+                tc_id = message_chunk.tool_call_id
+                result = str(message_chunk.content)
+                if tc_id in active_tool_calls:
+                    with active_tool_calls[tc_id]:
+                        st.caption(result[:500] + ("..." if len(result) > 500 else ""))
+                    active_tool_calls[tc_id].update(state="complete", expanded=False)
+                else:
+                    tool_name = getattr(message_chunk, "name", "tool") or "tool"
+                    tool_status = st.status(f"Tool completed: **{tool_name}**", state="complete", expanded=False)
+                    with tool_status:
+                        st.caption(result[:500] + ("..." if len(result) > 500 else ""))
+
+            elif isinstance(message_chunk, AIMessageChunk):
+                for tc in message_chunk.tool_call_chunks:
+                    tc_id = tc.get("id")
+                    if tc_id and tc_id not in active_tool_calls:
+                        name = tc.get("name", "tool")
+                        active_tool_calls[tc_id] = st.status(f"Using tool: **{name}**", expanded=True)
+                if message_chunk.content:
+                    if response_placeholder is None:
+                        response_placeholder = st.empty()
+                    full_response += message_chunk.content
+                    response_placeholder.markdown(full_response + "▌")
+
+        if response_placeholder is not None:
+            response_placeholder.markdown(full_response)
+
+    if full_response:
+        st.session_state['chat_histories'][thread_id].append(("assistant", full_response))
 
 st.set_page_config(page_title="Agentic Chatbot", page_icon="🤖")
 st.title("🤖 Agentic Chatbot")
@@ -85,8 +127,45 @@ for role, content in current_history:
     with st.chat_message(role):
         st.markdown(content)
 
-# Chat input
-user_input = st.chat_input("Type your message...")
+# Runnable configuration for current thread
+config = {
+    "configurable": {
+        "thread_id": st.session_state['thread_id'],
+        "pdf_name": st.session_state.get("ingested_pdf")
+    }
+}
+
+# Check if the current conversation is paused waiting for Human-in-the-Loop (HITL) approval
+thread_state = workflow.get_state(config)
+pending_interrupt_prompt = None
+
+if thread_state.tasks:
+    for task in thread_state.tasks:
+        if task.interrupts:
+            pending_interrupt_prompt = task.interrupts[0].value
+            break
+
+# Render HITL Approval Widget if an interrupt is active
+if pending_interrupt_prompt:
+    with st.chat_message("assistant"):
+        st.warning(f"⚠️ **Human Approval Required**\n\n{pending_interrupt_prompt}")
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("✅ Approve", key=f"approve_{st.session_state['thread_id']}", type="primary", use_container_width=True):
+                st.session_state['chat_histories'][st.session_state['thread_id']].append(("user", "Approved (yes)"))
+                stream_graph_response(Command(resume="yes"), config, st.session_state['thread_id'])
+                st.rerun()
+        with col2:
+            if st.button("❌ Reject", key=f"reject_{st.session_state['thread_id']}", type="secondary", use_container_width=True):
+                st.session_state['chat_histories'][st.session_state['thread_id']].append(("user", "Rejected (no)"))
+                stream_graph_response(Command(resume="no"), config, st.session_state['thread_id'])
+                st.rerun()
+
+# Chat input: disabled when human approval is pending
+user_input = st.chat_input(
+    "Type your message..." if not pending_interrupt_prompt else "Action pending approval above...",
+    disabled=bool(pending_interrupt_prompt)
+)
 
 if user_input:
     thread_id = st.session_state['thread_id']
@@ -94,45 +173,10 @@ if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    config = {
-        "configurable": {
-            "thread_id": thread_id,
-            "pdf_name": st.session_state.get("ingested_pdf")
-        }
-    }
-
     initial_state = {"messages": [HumanMessage(content=user_input)]}
+    stream_graph_response(initial_state, config, thread_id)
 
-    with st.chat_message("assistant"):
-        response_placeholder = None
-        full_response = ""
-        active_tool_calls = {}  # tool_call_id -> st.status widget
-
-        for message_chunk, _ in workflow.stream(
-            initial_state, config=config, stream_mode="messages"
-        ):
-            if isinstance(message_chunk, ToolMessage):
-                tc_id = message_chunk.tool_call_id
-                if tc_id in active_tool_calls:
-                    result = message_chunk.content
-                    with active_tool_calls[tc_id]:
-                        st.caption(result[:500] + ("..." if len(result) > 500 else ""))
-                    active_tool_calls[tc_id].update(state="complete", expanded=False)
-
-            elif isinstance(message_chunk, AIMessageChunk):
-                for tc in message_chunk.tool_call_chunks:
-                    tc_id = tc.get("id")
-                    if tc_id and tc_id not in active_tool_calls:
-                        name = tc.get("name", "tool")
-                        active_tool_calls[tc_id] = st.status(f"Using tool: **{name}**", expanded=True)
-                if message_chunk.content:
-                    if response_placeholder is None:
-                        response_placeholder = st.empty()
-                    full_response += message_chunk.content
-                    response_placeholder.markdown(full_response + "▌")
-
-        if response_placeholder is not None:
-            response_placeholder.markdown(full_response)
-
-    if full_response:
-        st.session_state['chat_histories'][thread_id].append(("assistant", full_response))
+    # If the execution triggered an interrupt, rerun immediately to render approval buttons
+    state_after = workflow.get_state(config)
+    if state_after.tasks and any(task.interrupts for task in state_after.tasks):
+        st.rerun()

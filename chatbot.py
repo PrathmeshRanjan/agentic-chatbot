@@ -1,7 +1,7 @@
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from typing import TypedDict, Annotated
 from dotenv import load_dotenv
@@ -13,6 +13,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
+from langgraph.types import interrupt, Command
 from typing import Any
 import sqlite3
 import requests
@@ -119,6 +120,34 @@ def get_stock_price(symbol: str) -> dict:
     url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={os.getenv('ALPHAVANTAGE_API_KEY')}"
     r = requests.get(url)
     return r.json()
+
+@tool
+def purchase_stock(symbol: str, quantity: int) -> dict:
+    """
+    Simulate purchasing a given quantity of a stock symbol.
+
+    HUMAN-IN-THE-LOOP:
+    Before confirming the purchase, this tool will interrupt
+    and wait for a human decision ("yes" / anything else).
+    """
+    # This pauses the graph and returns control to the caller
+    decision = interrupt(f"Approve buying {quantity} shares of {symbol}? (yes/no)")
+
+    if isinstance(decision, str) and decision.lower() == "yes":
+        return {
+            "status": "success",
+            "message": f"Purchase order placed for {quantity} shares of {symbol}.",
+            "symbol": symbol,
+            "quantity": quantity,
+        }
+    
+    else:
+        return {
+            "status": "cancelled",
+            "message": f"Purchase of {quantity} shares of {symbol} was declined by human.",
+            "symbol": symbol,
+            "quantity": quantity,
+        }
 
 @tool
 def get_current_weather(location: str) -> str:
@@ -240,7 +269,7 @@ def get_current_weather(location: str) -> str:
     except (KeyError, TypeError, ValueError) as error:
         return f"Unexpected weather API response: {error}"
 
-tools = [search_tool, calculator, get_stock_price, get_current_weather, rag_tool]
+tools = [search_tool, calculator, get_stock_price, get_current_weather, rag_tool, purchase_stock]
 
 model_with_tools = model.bind_tools(tools)
 
@@ -322,27 +351,84 @@ def get_thread_history(thread_id):
         if msg.type == 'human':
             history.append(('user', msg.content))
         elif msg.type == 'ai':
-            history.append(('assistant', msg.content))
+            if msg.content:
+                history.append(('assistant', msg.content))
     return history
 
-# thread_id = 1
-# config = {'configurable': {'thread_id': thread_id}}
-
+# =====================================================================
+# CLI Execution Examples with Human-in-the-Loop (HITL) Support
+# =====================================================================
+#
+# --- Example 1: Streaming CLI with HITL ---
+#
+# thread_id = "cli_session_1"
+# config = {"configurable": {"thread_id": thread_id}}
+#
 # while True:
-#     user_message = input('Enter your message: ')
-#     if user_message.strip().lower() in ['exit', 'quit', 'bye']:
+#     user_message = input("\nUser: ").strip()
+#     if user_message.lower() in ["exit", "quit", "bye"]:
+#         print("Exiting conversation.")
 #         break
-    
-#     initial_state = {
-#         'messages': [HumanMessage(content=user_message)]
-#     }
-
-#     # Non-streaming repsonse
-#     # response = workflow.invoke(initial_state, config=config)
-#     # print('AI: ', response['messages'][-1].content)
-
-#     # Streaming response
-#     for message_chunk, _ in workflow.stream(initial_state, config=config, stream_mode='messages'):
+#     if not user_message:
+#         continue
+#
+#     initial_state = {"messages": [HumanMessage(content=user_message)]}
+#
+#     print("AI: ", end="", flush=True)
+#     for message_chunk, _ in workflow.stream(
+#         initial_state, config=config, stream_mode="messages"
+#     ):
 #         if message_chunk.content:
-#             print(message_chunk.content, end=" ", flush=True)
-    
+#             print(message_chunk.content, end="", flush=True)
+#
+#     # Check if the graph paused on a Human-in-the-Loop interrupt
+#     state = workflow.get_state(config)
+#     while state.tasks and any(task.interrupts for task in state.tasks):
+#         for task in state.tasks:
+#             for intr in task.interrupts:
+#                 print(f"\n\n[HITL ACTION REQUIRED]: {intr.value}")
+#                 decision = input("Enter decision (yes/no): ").strip()
+#
+#                 print("AI: ", end="", flush=True)
+#                 # Resume execution using Command(resume=decision)
+#                 for message_chunk, _ in workflow.stream(
+#                     Command(resume=decision), config=config, stream_mode="messages"
+#                 ):
+#                     if message_chunk.content:
+#                         print(message_chunk.content, end="", flush=True)
+#
+#         state = workflow.get_state(config)
+#     print()
+#
+#
+# --- Example 2: Non-Streaming CLI with HITL ---
+#
+# thread_id = "cli_session_2"
+# config = {"configurable": {"thread_id": thread_id}}
+#
+# while True:
+#     user_message = input("\nUser: ").strip()
+#     if user_message.lower() in ["exit", "quit", "bye"]:
+#         break
+#     if not user_message:
+#         continue
+#
+#     initial_state = {"messages": [HumanMessage(content=user_message)]}
+#     response = workflow.invoke(initial_state, config=config)
+#
+#     # Print any assistant message generated before interrupt/completion
+#     if response.get("messages") and response["messages"][-1].content:
+#         print("AI:", response["messages"][-1].content)
+#
+#     # Check for HITL interrupts
+#     state = workflow.get_state(config)
+#     while state.tasks and any(task.interrupts for task in state.tasks):
+#         for task in state.tasks:
+#             for intr in task.interrupts:
+#                 print(f"\n[HITL ACTION REQUIRED]: {intr.value}")
+#                 decision = input("Enter decision (yes/no): ").strip()
+#                 # Resume graph execution with the decision
+#                 response = workflow.invoke(Command(resume=decision), config=config)
+#                 if response.get("messages") and response["messages"][-1].content:
+#                     print("AI:", response["messages"][-1].content)
+#         state = workflow.get_state(config)
