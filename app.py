@@ -14,37 +14,44 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Premium Light Pastel UI
+# Enforce Strict Light Mode & Premium Pastel Design
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
     
-    html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    /* Strict Light Mode Enforcement */
+    :root {
+        color-scheme: light !important;
+    }
+    
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        background-color: #f8fafd !important;
+        color: #1e293b !important;
     }
 
     /* Main Container Padding */
     .main .block-container {
         padding-top: 1.5rem;
-        padding-bottom: 3rem;
-        max-width: 920px;
+        padding-bottom: 3.5rem;
+        max-width: 900px;
     }
 
-    /* Hero Header: Premium Pastel Gradient */
+    /* Hero Header: Premium Pastel Card */
     .hero-card {
-        background: linear-gradient(135deg, #fdfbf7 0%, #f4f6fb 45%, #f5f3ff 100%);
-        border: 1px solid rgba(226, 232, 240, 0.85);
+        background: linear-gradient(135deg, #ffffff 0%, #f4f6fb 50%, #faf5ff 100%);
+        border: 1px solid #e2e8f0;
         border-radius: 20px;
         padding: 1.6rem 2rem;
-        margin-bottom: 1.8rem;
-        box-shadow: 0 10px 30px -6px rgba(148, 163, 184, 0.12), 0 4px 12px -2px rgba(148, 163, 184, 0.06);
+        margin-bottom: 1.6rem;
+        box-shadow: 0 10px 25px -5px rgba(148, 163, 184, 0.12), 0 4px 10px -2px rgba(148, 163, 184, 0.05);
     }
     
     .hero-title {
         font-size: 1.65rem;
         font-weight: 700;
         letter-spacing: -0.02em;
-        margin: 0 0 0.4rem 0;
+        margin: 0 0 0.35rem 0;
         background: linear-gradient(135deg, #1e293b 0%, #4338ca 60%, #7c3aed 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
@@ -115,7 +122,7 @@ st.markdown("""
         line-height: 1.5;
     }
 
-    /* Starter Suggestions */
+    /* Starter Suggestions Header */
     .starter-header {
         font-size: 0.92rem;
         font-weight: 600;
@@ -128,15 +135,38 @@ st.markdown("""
 
     /* Sidebar Styling */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #fbfcfe 0%, #f8fafc 100%);
-        border-right: 1px solid #edf2f7;
+        background-color: #fbfcfe !important;
+        border-right: 1px solid #eef2f6 !important;
     }
 
-    /* Streamlit Chat Messages Soft Styling */
-    .stChatMessage {
-        border-radius: 18px !important;
-        margin-bottom: 0.9rem !important;
+    /* Chat message bubble styling */
+    [data-testid="stChatMessage"] {
+        background-color: #ffffff !important;
+        border: 1px solid #eef2f6 !important;
+        border-radius: 16px !important;
+        box-shadow: 0 2px 10px rgba(148, 163, 184, 0.05) !important;
         padding: 1rem 1.2rem !important;
+        margin-bottom: 0.85rem !important;
+    }
+
+    /* Chat Input Styling */
+    [data-testid="stChatInput"] {
+        border-radius: 16px !important;
+        border: 1.5px solid #e2e8f0 !important;
+        background-color: #ffffff !important;
+        box-shadow: 0 4px 16px rgba(148, 163, 184, 0.08) !important;
+    }
+
+    [data-testid="stChatInput"]:focus-within {
+        border-color: #818cf8 !important;
+        box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15) !important;
+    }
+
+    /* Status containers */
+    [data-testid="stStatusWidget"] {
+        background-color: #f8fafc !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 12px !important;
     }
 </style>
 """, unsafe_allow_html=True)
