@@ -11,3 +11,4 @@ langchain-text-splitters
 langchain-google-genai
 pypdf
 faiss-cpu
+requests

@@ -1,0 +1,39 @@
+# Version Control
+.git/
+.gitignore
+.github/
+
+# Sensitive Environment Files (CRITICAL: Prevent API key leaks)
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Python Bytecode & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# IDE & OS Metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build & Scratch Artifacts
+Dockerfile
+.dockerignore
+scratch/
+*.log
