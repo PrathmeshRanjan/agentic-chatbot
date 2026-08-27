@@ -94,6 +94,22 @@ st.markdown("""
     .badge-weather { background: #fefce8; color: #854d0e; border: 1px solid #fef08a; }
     .badge-calc    { background: #fff1f2; color: #9f1239; border: 1px solid #fecdd3; }
 
+    /* Free Instance / API Disclaimer Note */
+    .note-box {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        color: #9a3412;
+        border-radius: 12px;
+        padding: 0.65rem 0.95rem;
+        font-size: 0.83rem;
+        font-weight: 500;
+        margin-top: 0.95rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        line-height: 1.45;
+    }
+
     /* Modern HITL Card */
     .hitl-container {
         background: linear-gradient(135deg, #fffdf5 0%, #fef3c7 100%);
@@ -337,6 +353,9 @@ st.markdown("""
         <span class="badge-item badge-hitl">🛡️ HITL Trading Guard</span>
         <span class="badge-item badge-weather">⛅ Weather API</span>
         <span class="badge-item badge-calc">🧮 Safe Math</span>
+    </div>
+    <div class="note-box">
+        ⏳ <span><strong>Note:</strong> The app could be slow as it is deployed on a free instance, and if replies aren't working, it is probably because my Mistral credits are over :)</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
