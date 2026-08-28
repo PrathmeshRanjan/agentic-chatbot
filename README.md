@@ -11,8 +11,6 @@
 
 An enterprise-grade, stateful Agentic Chatbot built with LangGraph, LangChain, and Mistral AI, featuring Human-in-the-Loop (HITL) safeguards, dynamic FAISS Vector RAG, multi-tool execution, persistent SQLite session checkpointing, production-grade LangSmith observability, and a modern Streamlit user interface.
 
-Live Deployment: [https://agentic-chatbot-0jel.onrender.com/](https://agentic-chatbot-0jel.onrender.com/)
-
 ---
 
 ## Table of Contents
